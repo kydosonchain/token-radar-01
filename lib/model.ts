@@ -1,4 +1,4 @@
-// Token Radar, model radar-2: one sealed snapshot in, one ranked board out.
+// Token Radar, model radar-3: one sealed snapshot in, one ranked board out.
 //
 // The board ranks every pre-token protocol the snapshot carries (the 40 watchlist slugs are the
 // floor, never the ceiling; the early radar adds every other rankable protocol below the floor).
@@ -6,21 +6,34 @@
 // symbol. Protocols whose token already trades are kept apart and shown with the market's own
 // values, never mixed into the ranking.
 //
-// Implied value follows only from the snapshot's own figures, in four factors:
+// Implied value follows only from the snapshot's own figures, in five factors:
 //
 //   category multiple = the category's own live-market multiple: the median mcap / TVL of the
-//                         live-token protocols in the same category (this snapshot, at least 3
+//                         live-token protocols in the same category (this snapshot, at least 5
 //                         of them), otherwise the global median; clamped to [0.05, 1.50].
 //                         A category whose live tokens trade rich against TVL earns a richer
 //                         multiple; a category with too few live comps borrows the global one.
-//   growth            = 1 + clamp(change_7d, -50, 100) / 100 * 0.6
-//   maturity          = 0.7 + min(age_days, 1095) / 1095 * 0.5   (unknown age: 365 days)
-//   breadth           = 1 + 0.04 * min(chains - 1, 5)
+//   growth            = 1 + clamp(change_7d, -50, 100) / 100 * 0.8
+//   maturity          = 1.0 + min(age_days, 1095) / 1095 * -0.25   (unknown age: 365 days)
+//                         Older with no token is worth LESS, not more: the calibration found
+//                         age carries no positive signal, and a protocol that has run for
+//                         years without issuing a token is the one least likely to launch rich.
+//   breadth           = 1 + 0 * min(chains - 1, 5)   (tested, zero weight: chains carry no
+//                         signal in this snapshot, so the factor is 1 and stays visible)
+//   size              = (tvl_usd / size_reference) ^ -0.4   (size_reference = median TVL of
+//                         the snapshot's live-token protocols). Market cap scales as TVL^0.52
+//                         in this snapshot, not TVL^1: big protocols trade at a much lower
+//                         multiple, so the size curve bends big TVLs down and small ones up.
 //
-//   implied = max(1, round(tvl_usd * category_multiple * growth * maturity * breadth))
+//   implied = max(1, round(tvl_usd * category_multiple * growth * maturity * breadth * size))
 //
-// No protocol name is ever special-cased: the same function scores every row, and the dashboard
-// prints the formula and the category multiples it used, so a reader can check any row by hand.
+// The weights are NOT hand-picked: lib/validate.ts fits them on TRAIN splits of the
+// snapshot's live-token protocols only and tests them on held-out splits it never saw
+// (5-fold cross-validation, a time-split, a 2,000-resample bootstrap). The dashboard
+// prints the validation numbers, so a reader can check the model's error by hand.
+// No protocol name is ever special-cased: the same function scores every row, and the
+// dashboard prints the formula and the category multiples it used, so a reader can
+// check any row by hand.
 
 /** The snapshot's protocol entry: exactly the ten fields the sealed input carries. */
 export interface SnapshotProtocol {
@@ -45,7 +58,12 @@ export interface Snapshot {
   watchlist: string[];
 }
 
-/** The model's constants, as the dashboard states them. */
+/** The model's constants, as the dashboard states them. radar-3's weights are the
+ * ones the out-of-sample calibration in lib/validate.ts fitted on TRAIN splits of
+ * the snapshot's live-token protocols only (see validation-report.json):
+ * growth 0.8, maturity falling with age (older with no token is worth less, not
+ * more), breadth 0 (chains carry no signal in this snapshot), and a size curve
+ * (market cap scales as TVL^0.52, so big protocols trade at a lower multiple). */
 export interface ModelConstants {
   growth_weight: number;
   growth_floor: number;
@@ -59,25 +77,27 @@ export interface ModelConstants {
   multiple_floor: number;
   multiple_cap: number;
   multiple_min_live: number;
+  size_delta: number;
 }
 
 export const MODEL: ModelConstants = {
-  growth_weight: 0.6,
+  growth_weight: 0.8,
   growth_floor: -50,
   growth_cap: 100,
-  maturity_floor: 0.7,
-  maturity_range: 0.5,
+  maturity_floor: 1.0,
+  maturity_range: -0.25,
   maturity_days: 1095,
   unknown_age_days: 365,
-  breadth_step: 0.04,
+  breadth_step: 0,
   breadth_max: 5,
   multiple_floor: 0.05,
   multiple_cap: 1.5,
-  multiple_min_live: 3,
+  multiple_min_live: 5,
+  size_delta: -0.4,
 };
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-2';
+export const MODEL_VERSION = 'radar-3';
 
 /** How many live-token protocols the Live token view carries, by market cap. */
 export const LIVE_ROWS = 24;
@@ -112,6 +132,7 @@ export interface BoardRow {
     growth_multiplier: number;
     maturity_multiplier: number;
     breadth_multiplier: number;
+    size_multiplier: number;
     age_days: number | null;
   };
   farm_steps: string[];
@@ -134,6 +155,7 @@ export interface RadarRow {
   growth_multiplier: number;
   maturity_multiplier: number;
   breadth_multiplier: number;
+  size_multiplier: number;
   launch_note: string | null;
 }
 
@@ -156,6 +178,25 @@ export interface CategoryMultiple {
   from_global: boolean;
 }
 
+/** The out-of-sample validation of one model, computed from the snapshot alone
+ * (lib/validate.ts): the numbers the dashboard's validation panel prints. */
+export interface ValidationSummary {
+  n_live: number;
+  cv_mdape: number;
+  cv_mean_ape: number;
+  cv_within_25: number;
+  cv_within_50: number;
+  baseline_mdape: number;
+  timesplit_cutoff: string;
+  timesplit_train_n: number;
+  timesplit_test_n: number;
+  timesplit_mdape: number;
+  timesplit_baseline_mdape: number;
+  bootstrap_lo: number;
+  bootstrap_hi: number;
+  model_version: string;
+}
+
 /** Everything the dashboard needs: the board, the live set, the model and its multiples. */
 export interface RadarData {
   as_of: string;
@@ -163,6 +204,8 @@ export interface RadarData {
   floor_usd: number;
   model: ModelConstants;
   model_version: string;
+  size_reference_tvl: number;
+  validation: ValidationSummary | null;
   watchlist_size: number;
   board_size: number;
   early_size: number;
@@ -290,13 +333,16 @@ export function categoryMultiples(snapshot: Snapshot, model: ModelConstants = MO
 const round3 = (n: number): number => Math.round(n * 1e3) / 1e3;
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 
-/** The four factors and the implied value one protocol gets under `model`. */
+/** The four factors and the implied value one protocol gets under `model`.
+ * `sizeRef` is required, never defaulted: with a nonzero size_delta, a missing
+ * reference would bend every TVL around 1 dollar and collapse the values. */
 export function impliedValue(
   protocol: SnapshotProtocol,
   asOf: string,
   multiples: Map<string, number>,
   model: ModelConstants,
-): { implied: number; categoryMultiple: number; growthPct: number; growthMult: number; maturityMult: number; breadthMult: number; age: number | null } {
+  sizeRef: number,
+): { implied: number; categoryMultiple: number; growthPct: number; growthMult: number; maturityMult: number; breadthMult: number; sizeMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
   const categoryMultiple = multiples.get(protocol.category ?? 'Other') ?? 0.2;
   const rawGrowth = finite(protocol.change_7d, 0);
@@ -305,8 +351,21 @@ export function impliedValue(
   const ageForModel = age ?? model.unknown_age_days;
   const maturityMult = model.maturity_floor + (clamp(ageForModel, 0, model.maturity_days) / model.maturity_days) * model.maturity_range;
   const breadthMult = 1 + model.breadth_step * Math.min(Math.max(protocol.chains.length - 1, 0), model.breadth_max);
-  const implied = Math.max(1, Math.round(protocol.tvl_usd * categoryMultiple * growthMult * maturityMult * breadthMult));
-  return { implied, categoryMultiple, growthPct, growthMult, maturityMult, breadthMult, age };
+  const sizeMult = model.size_delta === 0 ? 1 : Math.pow(protocol.tvl_usd / sizeRef, model.size_delta);
+  const implied = Math.max(1, Math.round(protocol.tvl_usd * categoryMultiple * growthMult * maturityMult * breadthMult * sizeMult));
+  return { implied, categoryMultiple, growthPct, growthMult, maturityMult, breadthMult, sizeMult, age };
+}
+
+/** The size curve's reference point: the median TVL of the snapshot's live-token
+ * protocols (market cap and TVL both positive). At this TVL the size factor is 1. */
+export function sizeReference(snapshot: Snapshot): number {
+  const tvls = snapshot.protocols
+    .filter((p) => p.mcap_usd !== null && p.mcap_usd > 0 && p.tvl_usd > 0)
+    .map((p) => p.tvl_usd)
+    .sort((a, b) => a - b);
+  if (tvls.length === 0) return 1;
+  const mid = Math.floor(tvls.length / 2);
+  return tvls.length % 2 === 1 ? tvls[mid]! : Math.round((tvls[mid - 1]! + tvls[mid]!) / 2);
 }
 
 /**
@@ -341,7 +400,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
   }
 
   const scored = [...chosen.values()].map((p) => {
-    const v = impliedValue(p, snapshot.as_of, byCategory, model);
+    const v = impliedValue(p, snapshot.as_of, byCategory, model, sizeReference(snapshot));
     return { p, ...v };
   });
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
@@ -367,6 +426,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       growth_multiplier: round4(s.growthMult),
       maturity_multiplier: round4(s.maturityMult),
       breadth_multiplier: round4(s.breadthMult),
+      size_multiplier: round4(s.sizeMult),
       age_days: s.age,
     },
     farm_steps: farmSteps(s.p, s.age).map(stepText),
@@ -554,11 +614,13 @@ export function radarRow(row: BoardRow): RadarRow {
     growth_multiplier: row.model.growth_multiplier,
     maturity_multiplier: row.model.maturity_multiplier,
     breadth_multiplier: row.model.breadth_multiplier,
+    size_multiplier: row.model.size_multiplier,
     launch_note: row.launch_note,
   };
 }
 
-/** Everything the dashboard renders, from the snapshot. */
+/** Everything the dashboard renders, from the snapshot. `validation` is filled in
+ * by main.ts (lib/validate.ts): the out-of-sample numbers for this model. */
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): { board: BoardRow[]; radar: RadarData } {
   const board = buildBoard(snapshot, model);
   const live = liveRows(snapshot);
@@ -573,6 +635,8 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     floor_usd: snapshot.floor_usd,
     model,
     model_version: MODEL_VERSION,
+    size_reference_tvl: sizeReference(snapshot),
+    validation: null,
     watchlist_size: snapshot.watchlist.length,
     board_size: board.length,
     early_size: early,
