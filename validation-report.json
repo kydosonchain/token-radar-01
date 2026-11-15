@@ -1,0 +1,241 @@
+{
+  "as_of": "2026-11-14",
+  "n_live": 128,
+  "mirror_mismatches": 0,
+  "regression": {
+    "n": 128,
+    "intercept": -1.8,
+    "growth_slope": -4.18,
+    "age_slope": -0.02,
+    "chains_slope": -0.03,
+    "ci": {
+      "growth": [
+        -9,
+        1.75
+      ],
+      "age": [
+        -0.72,
+        0.65
+      ],
+      "chains": [
+        -0.18,
+        0.14
+      ]
+    }
+  },
+  "size_regression": {
+    "n": 128,
+    "log_tvl_slope": 0.52,
+    "ci": [
+      0.39,
+      0.7
+    ]
+  },
+  "baseline_cv": {
+    "n": 128,
+    "mdape": 87.8,
+    "mean_ape": 1458.5,
+    "within_25": 8.6,
+    "within_50": 24.2,
+    "median_bias": 7.8
+  },
+  "radar2_cv": {
+    "n": 128,
+    "mdape": 97.9,
+    "mean_ape": 3699.5,
+    "within_25": 8.6,
+    "within_50": 14.8,
+    "median_bias": 20.8
+  },
+  "radar2_timesplit": {
+    "cutoff": "2024-02-18",
+    "train_n": 47,
+    "test_n": 48,
+    "mdape": 95.4,
+    "mean_ape": 1096.5,
+    "baseline_mdape": 88.2
+  },
+  "best_combo": {
+    "growth_weight": 0.8,
+    "growth_floor": -50,
+    "growth_cap": 100,
+    "maturity_floor": 1,
+    "maturity_range": -0.25,
+    "maturity_days": 1095,
+    "unknown_age_days": 365,
+    "breadth_step": 0,
+    "breadth_max": 5,
+    "multiple_floor": 0.05,
+    "multiple_cap": 1,
+    "multiple_min_live": 5,
+    "size_delta": -0.4
+  },
+  "best_cv": {
+    "n": 128,
+    "mdape": 88.5,
+    "mean_ape": 1610.5,
+    "within_25": 6.3,
+    "within_50": 20.3,
+    "median_bias": -35.1
+  },
+  "best_timesplit": {
+    "cutoff": "2024-02-18",
+    "train_n": 47,
+    "test_n": 48,
+    "mdape": 80.1,
+    "mean_ape": 335.1,
+    "baseline_mdape": 88.2
+  },
+  "best_bootstrap": {
+    "lo": 79.3,
+    "hi": 92.2
+  },
+  "size_only": {
+    "combo": {
+      "growth_weight": 0,
+      "growth_floor": -50,
+      "growth_cap": 100,
+      "maturity_floor": 1,
+      "maturity_range": 0,
+      "maturity_days": 1095,
+      "unknown_age_days": 365,
+      "breadth_step": 0,
+      "breadth_max": 5,
+      "multiple_floor": 0.05,
+      "multiple_cap": 1,
+      "multiple_min_live": 5,
+      "size_delta": -0.48
+    },
+    "cv": {
+      "n": 128,
+      "mdape": 89.6,
+      "mean_ape": 1749.7,
+      "within_25": 12.5,
+      "within_50": 23.4,
+      "median_bias": -25.2
+    },
+    "timesplit": {
+      "cutoff": "2024-02-18",
+      "train_n": 47,
+      "test_n": 48,
+      "mdape": 78.4,
+      "mean_ape": 361.4,
+      "baseline_mdape": 88.2
+    },
+    "cv_mean_fold_mdape": 90
+  },
+  "clean_timesplit": {
+    "cutoff": "2024-02-18",
+    "train_n": 47,
+    "test_n": 48,
+    "best_combo": {
+      "growth_weight": 0,
+      "growth_floor": -50,
+      "growth_cap": 100,
+      "maturity_floor": 0.85,
+      "maturity_range": 0.5,
+      "maturity_days": 1095,
+      "unknown_age_days": 365,
+      "breadth_step": 0,
+      "breadth_max": 5,
+      "multiple_floor": 0.05,
+      "multiple_cap": 1,
+      "multiple_min_live": 2,
+      "size_delta": -0.4
+    },
+    "mdape": 92.4,
+    "radar2_mdape": 95.4
+  },
+  "top5": [
+    {
+      "score": 83.3,
+      "combo": {
+        "growth_weight": 0.8,
+        "growth_floor": -50,
+        "growth_cap": 100,
+        "maturity_floor": 1,
+        "maturity_range": -0.25,
+        "maturity_days": 1095,
+        "unknown_age_days": 365,
+        "breadth_step": 0,
+        "breadth_max": 5,
+        "multiple_floor": 0.05,
+        "multiple_cap": 1,
+        "multiple_min_live": 5,
+        "size_delta": -0.4
+      }
+    },
+    {
+      "score": 83.3,
+      "combo": {
+        "growth_weight": 0.8,
+        "growth_floor": -50,
+        "growth_cap": 100,
+        "maturity_floor": 1,
+        "maturity_range": -0.25,
+        "maturity_days": 1095,
+        "unknown_age_days": 365,
+        "breadth_step": 0,
+        "breadth_max": 5,
+        "multiple_floor": 0.05,
+        "multiple_cap": 1.5,
+        "multiple_min_live": 5,
+        "size_delta": -0.4
+      }
+    },
+    {
+      "score": 83.3,
+      "combo": {
+        "growth_weight": 0.8,
+        "growth_floor": -50,
+        "growth_cap": 100,
+        "maturity_floor": 1,
+        "maturity_range": -0.25,
+        "maturity_days": 1095,
+        "unknown_age_days": 365,
+        "breadth_step": 0,
+        "breadth_max": 5,
+        "multiple_floor": 0.05,
+        "multiple_cap": 2.5,
+        "multiple_min_live": 5,
+        "size_delta": -0.4
+      }
+    },
+    {
+      "score": 83.3,
+      "combo": {
+        "growth_weight": 0.4,
+        "growth_floor": -50,
+        "growth_cap": 100,
+        "maturity_floor": 0.7,
+        "maturity_range": 0,
+        "maturity_days": 1095,
+        "unknown_age_days": 365,
+        "breadth_step": 0,
+        "breadth_max": 5,
+        "multiple_floor": 0.05,
+        "multiple_cap": 1,
+        "multiple_min_live": 5,
+        "size_delta": -0.4
+      }
+    },
+    {
+      "score": 83.3,
+      "combo": {
+        "growth_weight": 0.4,
+        "growth_floor": -50,
+        "growth_cap": 100,
+        "maturity_floor": 0.7,
+        "maturity_range": 0,
+        "maturity_days": 1095,
+        "unknown_age_days": 365,
+        "breadth_step": 0,
+        "breadth_max": 5,
+        "multiple_floor": 0.05,
+        "multiple_cap": 1.5,
+        "multiple_min_live": 5,
+        "size_delta": -0.4
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-// Token Radar, radar-2 (Node 22, standard library only).
+// Token Radar, radar-3 (Node 22, standard library only).
 //
 // Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
 // pre-token protocol with the model in lib/model.ts, writes the ranked board to
@@ -13,7 +13,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { boardIssue, buildRadar, dataScript, parseSnapshot, MODEL, MODEL_VERSION } from './lib/model.ts';
+import { validateModel } from './lib/validate.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -41,6 +42,9 @@ const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
 
 const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
 const { board, radar } = buildRadar(snapshot);
+// The out-of-sample validation, computed from this snapshot alone (deterministic:
+// fixed folds, fixed time-split cutoff, seeded bootstrap), for the dashboard panel.
+radar.validation = validateModel(snapshot, MODEL, MODEL.size_delta, MODEL_VERSION);
 const issue = boardIssue(board, snapshot);
 if (issue !== null) {
   process.stderr.write(`token radar: the model wrote a board the gate refuses: ${issue}\n`);
@@ -84,5 +88,6 @@ writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEX
 
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
+    `token radar: validation (out-of-sample, ${radar.validation!.n_live} live-token protocols): 5-fold CV median error ${radar.validation!.cv_mdape}% (naive multiple: ${radar.validation!.baseline_mdape}%), time-split ${radar.validation!.timesplit_mdape}% on ${radar.validation!.timesplit_test_n} held-out protocols, bootstrap 90% interval ${radar.validation!.bootstrap_lo}-${radar.validation!.bootstrap_hi}%\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (${dashFiles.length} files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
