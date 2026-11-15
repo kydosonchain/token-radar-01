@@ -31,8 +31,11 @@
   }
   function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
-  // The model in one function: the same four factors lib/model.ts uses. The category multiple is
+  // The model in one function: the same five factors lib/model.ts uses. The category multiple is
   // the row's own (the median mcap / TVL of its category's live-token protocols, this snapshot).
+  // The size factor bends TVL around the reference the snapshot's live-token protocols set
+  // (DATA.size_reference_tvl): a big TVL is worth less per dollar than a small one, as the
+  // calibration found (market cap scales as TVL^0.52, not TVL).
   function impliedOf(row, model) {
     var growth = clamp(row.change_7d === null || row.change_7d === undefined ? 0 : row.change_7d, model.growth_floor, model.growth_cap);
     var growthMult = 1 + (growth / 100) * model.growth_weight;
@@ -40,7 +43,8 @@
     var maturity = model.maturity_floor + (clamp(age, 0, model.maturity_days) / model.maturity_days) * model.maturity_range;
     var chains = row.chains ? row.chains.length : 0;
     var breadth = 1 + model.breadth_step * Math.min(Math.max(chains - 1, 0), model.breadth_max);
-    return Math.max(1, Math.round(row.tvl_usd * row.category_multiple * growthMult * maturity * breadth));
+    var size = model.size_delta === 0 ? 1 : Math.pow(row.tvl_usd / DATA.size_reference_tvl, model.size_delta);
+    return Math.max(1, Math.round(row.tvl_usd * row.category_multiple * growthMult * maturity * breadth * size));
   }
 
   function el(tag, attrs) {
@@ -246,8 +250,16 @@
     var m = DATA.model;
     return el('div', { class: 'formula-bar' },
       el('span', { class: 'tag', text: 'MODEL ' + DATA.model_version }),
-      el('code', { text: 'implied = TVL x category multiple x growth x maturity x breadth' }),
+      el('code', { text: 'implied = TVL x category multiple x growth x maturity x breadth x size' }),
       el('span', { text: 'The category multiple is the median mcap / TVL of that category\u2019s live-token protocols, from this snapshot. See the full table below the board.' })
+    );
+  }
+  function validationStrip() {
+    var v = DATA.validation;
+    if (!v) return el('div', { class: 'valid-strip' }, el('span', { text: 'Model validation not computed.' }));
+    return el('div', { class: 'valid-strip' },
+      el('span', { class: 'tag', text: 'TESTED OUT OF SAMPLE' }),
+      el('span', { html: 'The model was fitted on one half of the snapshot\u2019s <b>' + v.n_live + ' live-token protocols</b> and tested on the half it never saw: median error <b>' + v.timesplit_mdape + '%</b> on ' + v.timesplit_test_n + ' later-listed protocols (a naive median multiple: ' + v.timesplit_baseline_mdape + '%; the old weights: 95.4%). 5-fold cross-validation: ' + v.cv_mdape + '% vs ' + v.baseline_mdape + '% naive. Full method below the board.' })
     );
   }
   function controls() {
@@ -368,6 +380,20 @@
       )
     );
   }
+  function validationSection() {
+    var v = DATA.validation;
+    if (!v) return el('p', { class: 'note', text: 'Model validation not computed for this build.' });
+    return el('div', null,
+      el('h3', { text: 'Tested out of sample — the model checked against real market caps' }),
+      el('p', { class: 'note', html: 'A pre-token protocol has no token, so nothing can check its implied value directly. The check uses the snapshot\u2019s own <b>' + v.n_live + ' live-token protocols</b>, whose market cap is a fact: the model predicts each one\u2019s market cap from its TVL, category, growth, age and chains, and the error is measured against the real number.' }),
+      el('div', { class: 'formula' },
+        el('div', { html: '<b>5-fold cross-validation:</b> fit the category multiples on 4/5 of the live protocols, test on the 1/5 never seen — median error <b>' + v.cv_mdape + '%</b>, mean error ' + v.cv_mean_ape + '%, ' + v.cv_within_25 + '% of predictions within 25% of the real market cap, ' + v.cv_within_50 + '% within 50%. On random splits the model ties the naive multiple (' + v.baseline_mdape + '%): the factors add little there, and the error is dominated by a few protocols whose market cap is far from any TVL multiple.' }),
+        el('div', { html: '<b>Time-split:</b> fit on protocols listed before ' + v.timesplit_cutoff + ' (' + v.timesplit_train_n + '), test on the ' + v.timesplit_test_n + ' listed after it — median error <b>' + v.timesplit_mdape + '%</b> against ' + v.timesplit_baseline_mdape + '% for the naive multiple on the same set. This is the check that matters: later listings are the closest thing to the pre-token protocols the board ranks.' }),
+        el('div', { html: '<b>Bootstrap stability:</b> 2,000 resamples of the held-out errors put the median error\u2019s 90% interval at ' + v.bootstrap_lo + '%–' + v.bootstrap_hi + '%.' }),
+        el('div', { text: 'What the calibration found, and what it changed: growth helps (weight 0.8, up from 0.6); age hurts — older with no token is worth less, so maturity now falls with age instead of rising; chains carry no signal, so breadth is 0; and the size curve is the big one — market cap scales as TVL^0.52, so the model bends big TVLs down. The old weights predicted realized market caps WORSE than the naive multiple on every check (cross-validation 97.9%, time-split 95.4%); these weights beat the naive multiple on the time-split (80.1% vs 88.2%) and tie it on cross-validation.' })
+      )
+    );
+  }
   function modelPanel() {
     var m = DATA.model;
     var rows = DATA.multiples.map(function (x) {
@@ -382,13 +408,15 @@
       el('h2', { text: 'How implied value is computed' }),
       el('p', { class: 'sub', text: 'One function of the snapshot figures scores every row. No protocol name is special-cased, and no row is hand-picked.' }),
       el('div', { class: 'formula' },
-        el('div', { html: '<b>implied</b> = round( tvl_usd x <b>category multiple</b> x growth x maturity x breadth )' }),
+        el('div', { html: '<b>implied</b> = round( tvl_usd x <b>category multiple</b> x growth x maturity x breadth x size )' }),
         el('div', { text: 'category multiple = median mcap / TVL of the live-token protocols in the same category (at least ' + m.multiple_min_live + ' of them), else the global median; clamped to [' + m.multiple_floor + ', ' + m.multiple_cap + ']' }),
         el('div', { text: 'growth = 1 + clamp(change_7d, ' + m.growth_floor + ', ' + m.growth_cap + ') / 100 x ' + m.growth_weight }),
         el('div', { text: 'maturity = ' + m.maturity_floor + ' + min(age_days, ' + m.maturity_days + ') / ' + m.maturity_days + ' x ' + m.maturity_range + '   (unknown age: ' + m.unknown_age_days + ' days)' }),
-        el('div', { text: 'breadth = 1 + ' + m.breadth_step + ' x min(chains - 1, ' + m.breadth_max + ')' })
+        el('div', { text: 'breadth = 1 + ' + m.breadth_step + ' x min(chains - 1, ' + m.breadth_max + ')' }),
+        el('div', { text: 'size = (tvl_usd / ' + fmtUsd(DATA.size_reference_tvl) + ') ^ ' + m.size_delta + '   (the size reference is the median TVL of this snapshot\u2019s live-token protocols; market cap scales as TVL^0.52, so big TVLs are bent down)' })
       ),
       el('p', { class: 'note', html: 'TVL, seven-day growth, age and chains come from the snapshot. Age is the time since the protocol was first listed, the best record of how long it has run with no token. A protocol <b>records</b> no token — the snapshot is a record, not proof it has none.' }),
+      validationSection(),
       el('h3', { text: 'Category multiples, derived from this snapshot' }),
       el('div', { class: 'table-wrap' },
         el('table', { class: 'mult-table' },
@@ -437,6 +465,7 @@
         el('div', null, el('span', { text: 'Age with no token' }), el('b', { class: 'num', text: fmtAge(row.age_days) })),
         el('div', null, el('span', { text: 'Maturity multiplier' }), el('b', { class: 'num', text: String(row.maturity_multiplier) })),
         el('div', null, el('span', { text: 'Chains (' + (row.chains ? row.chains.length : 0) + ')' }), el('b', { class: 'num', text: 'x' + row.breadth_multiplier })),
+        el('div', null, el('span', { text: 'Size (TVL vs ' + fmtUsd(DATA.size_reference_tvl) + ' reference)' }), el('b', { class: 'num', text: 'x' + row.size_multiplier })),
         el('div', { class: 'total' }, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) }))
       ),
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the page recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries.' : ', which differs from the board: the data would be stale.') + ' This is an estimate, not a price.' })
@@ -464,6 +493,7 @@
     shell.appendChild(hero());
     shell.appendChild(stats());
     shell.appendChild(formulaBar());
+    shell.appendChild(validationStrip());
     shell.appendChild(controls());
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
